@@ -45,10 +45,10 @@ def parse_tacotron2_args(parent, add_help=False):
     # symbols parameters
     global symbols
     len_symbols = len(symbols)
-    symbols = parser.add_argument_group('symbols parameters')
-    symbols.add_argument('--n-symbols', default=len_symbols, type=int,
+    symbol = parser.add_argument_group('symbols parameters')
+    symbol.add_argument('--n-symbols', default=len_symbols, type=int,
                          help='Number of symbols in dictionary')
-    symbols.add_argument('--symbols-embedding-dim', default=512, type=int,
+    symbol.add_argument('--symbols-embedding-dim', default=512, type=int,
                          help='Input embedding dimension')
 
     # encoder parameters
