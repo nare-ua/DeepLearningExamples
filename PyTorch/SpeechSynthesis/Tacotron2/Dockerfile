@@ -8,3 +8,5 @@ RUN pip install --upgrade jupyter_http_over_ws>=0.0.7 && \
   jupyter serverextension enable --py jupyter_http_over_ws
 RUN pip install ipywidgets && \
   jupyter nbextension enable --py widgetsnbextension
+RUN pip install google-colab
+EXPOSE 8888
