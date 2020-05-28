@@ -34,19 +34,21 @@ check official homepage to get the latest version
 roughly following LJ's split (12500/100/500 = 0.95419847, 0.00763359, 0.03816794)  
 134 => (119/5/10)
 
-2. prepare mel
+3. prepare mel
 prepare fileslist; see `mj_convert.sh`  
 go into docker (`sh scripts/docker/interactive.sh`)  
 `bash scripts/prepare_mels.sh`
 
 processed mel-spectrograms should be found in the `/mnt/data/datasets/MJ/mels`
 
-3. train waveglow
+### training
+1. train waveglow
 see `sh train_mj_waveglow.sh`
 
-4. train tacotron
+2. train tacotron
+see `sh train_mj_tacotron.sh`
 
-### Training from scratch
-Korean dataset
+### testing
+`python inference.py --tacotron2 ./output/checkpoint_Tacotron2_6300 --waveglow ./output/checkpoint_WaveGlow_14100 -o output/ --include-warmup -i phrases/phrase_1_64.txt --amp_run --wn-channels 256`
 
-
+### deploymnet
