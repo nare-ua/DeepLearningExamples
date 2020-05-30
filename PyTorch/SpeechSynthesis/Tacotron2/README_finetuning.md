@@ -102,8 +102,8 @@ see `sh train_mj_tacotron.sh`
 ### deploymnet
 
 
-TODO:
-- ignore text embedding?
-
-
 - seem alignment info is destroyed and then reconstructed...
+
+TODO:
+- train only postnet - useless
+- ignore text embedding? - got noise.. :(

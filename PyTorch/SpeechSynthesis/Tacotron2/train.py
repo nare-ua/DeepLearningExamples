@@ -289,6 +289,17 @@ def adjust_learning_rate(iteration, epoch, optimizer, learning_rate,
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+def freeze_embedding(model):
+  #print(model)
+  print("freezing embedding...")
+  for p in model.embedding.parameters():
+    p.requires_grad = False
+
+def finetune_postnet(model):
+  for p in model.parameters():
+    p.requires_grad = False
+  for p in model.postnet.parameters():
+    p.requires_grad = True
 
 def main():
 
@@ -334,6 +345,11 @@ def main():
                              cpu_run=False,
                              uniform_initialize_bn_weight=not args.disable_uniform_initialize_bn_weight)
 
+    if model_name == 'Tacotron2':
+      # placeholder for model freeze etc
+      #finetune_postnet(model_name, model)
+      freeze_embedding(model)
+
     if not args.amp_run and distributed_run:
         model = DDP(model)
 
@@ -355,6 +371,7 @@ def main():
     if args.checkpoint_path is not "":
         load_checkpoint(model, optimizer, start_epoch, model_config,
                         args.amp_run, args.checkpoint_path, local_rank)
+
 
     start_epoch = start_epoch[0]
 

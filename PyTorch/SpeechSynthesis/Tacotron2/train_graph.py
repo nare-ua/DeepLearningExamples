@@ -27,7 +27,7 @@ while True:
   print(len(epochs), len(vls), len(tls))
   df = pd.DataFrame({'epoch': epochs, 'tl': tls, 'vl': vls})
   fig, ax = plt.subplots(1, 1)
-  df.iloc[:100,:].plot(x = 'epoch', y = ['tl', 'vl'], ax=ax)
+  df.plot(x = 'epoch', y = ['tl', 'vl'], ax=ax)
   plt.show()
   time.sleep(3*60)
   plt.close()
