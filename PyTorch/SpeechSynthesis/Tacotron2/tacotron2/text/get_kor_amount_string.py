@@ -46,6 +46,7 @@ def num_to_alpha(text):
   __f = lambda t: __map[t] if t.isdigit() else t
   return "".join(__f(t) for t in text)
 
+from unidecode import unidecode
 if __name__ == '__main__':
   __test = [
     (0, '영'),
@@ -64,5 +65,5 @@ if __name__ == '__main__':
 
   for a, b in __test:
     res = num_to_alpha(get_kor_amount_string(a))
-    print(a, res)
     assert res == b
+    print(a, res, unidecode(res))
