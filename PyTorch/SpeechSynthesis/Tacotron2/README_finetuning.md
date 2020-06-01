@@ -97,7 +97,7 @@ see `sh train_mj_waveglow.sh`
 see `sh train_mj_tacotron.sh`
 
 ### testing
-`python inference.py --tacotron2 ./output/checkpoint_Tacotron2_6300 --waveglow ./output/checkpoint_WaveGlow_14100 -o output/ --include-warmup -i phrases/phrase_1_64.txt --amp_run --wn-channels 256`
+`python inference.py --tacotron2 ./output/checkpoint_Tacotron2_6300 --waveglow ./output/checkpoint_WaveGlow_14100 -o output/ --include-warmup -i phrases/phrase_1_64.txt --amp-run --wn-channels 256`
 
 ### deploymnet
 
@@ -105,5 +105,112 @@ see `sh train_mj_tacotron.sh`
 - seem alignment info is destroyed and then reconstructed...
 
 TODO:
-- train only postnet - useless
-- ignore text embedding? - got noise.. :(
+- train only postnet/or encoder/decoder - no use
+- ignore text embedding? - ?
+- batch size issue
+
+
+
+
+## Network dump
+```
+Tacotron2(
+  (embedding): Embedding(148, 512)
+  (encoder): Encoder(
+    (convolutions): ModuleList(
+      (0): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (1): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (2): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+    )
+    (lstm): LSTM(512, 256, batch_first=True, bidirectional=True)
+  )
+  (decoder): Decoder(
+    (prenet): Prenet(
+      (layers): ModuleList(
+        (0): LinearNorm(
+          (linear_layer): Linear(in_features=80, out_features=256, bias=False)
+        )
+        (1): LinearNorm(
+          (linear_layer): Linear(in_features=256, out_features=256, bias=False)
+        )
+      )
+    )
+    (attention_rnn): LSTMCell(768, 1024)
+    (attention_layer): Attention(
+      (query_layer): LinearNorm(
+        (linear_layer): Linear(in_features=1024, out_features=128, bias=False)
+      )
+      (memory_layer): LinearNorm(
+        (linear_layer): Linear(in_features=512, out_features=128, bias=False)
+      )
+      (v): LinearNorm(
+        (linear_layer): Linear(in_features=128, out_features=1, bias=False)
+      )
+      (location_layer): LocationLayer(
+        (location_conv): ConvNorm(
+          (conv): Conv1d(2, 32, kernel_size=(31,), stride=(1,), padding=(15,), bias=False)
+        )
+        (location_dense): LinearNorm(
+          (linear_layer): Linear(in_features=32, out_features=128, bias=False)
+        )
+      )
+    )
+    (decoder_rnn): LSTMCell(1536, 1024, bias=1)
+    (linear_projection): LinearNorm(
+      (linear_layer): Linear(in_features=1536, out_features=80, bias=True)
+    )
+    (gate_layer): LinearNorm(
+      (linear_layer): Linear(in_features=1536, out_features=1, bias=True)
+    )
+  )
+  (postnet): Postnet(
+    (convolutions): ModuleList(
+      (0): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(80, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (1): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (2): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (3): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (4): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 80, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(80, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+    )
+  )
+)
+```
