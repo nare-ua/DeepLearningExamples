@@ -23,7 +23,7 @@ mkdir -p "$DATAROOT/mels/3"
 mkdir -p "$DATAROOT/mels/4"
 
 if [ $(ls $DATAROOT/mels | wc -l) -ne $wavcnt ]; then
-    python preprocess_audio2mel.py --wav-files "$TRAINLIST" --mel-files "$TRAINLIST_MEL"
+    python preprocess_audio2mel.py --wav-files "$TRAINLIST" --mel-files "$TRAINLIST_MEL" --text-cleaners "transliteration_cleaners"
     #python preprocess_audio2mel.py --wav-files "$TESTLIST" --mel-files "$TESTLIST_MEL"
-    python preprocess_audio2mel.py --wav-files "$VALLIST" --mel-files "$VALLIST_MEL"	
+    python preprocess_audio2mel.py --wav-files "$VALLIST" --mel-files "$VALLIST_MEL"	--text-cleaners "transliteration_cleaners"
 fi	

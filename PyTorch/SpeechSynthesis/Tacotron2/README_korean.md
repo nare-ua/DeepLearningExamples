@@ -15,3 +15,5 @@ unidecode(u'병아리를 구워먹자')
 
 * ref
   - https://www.slideshare.net/carpedm20/deview-2017-80824162
+
+* use `transliteration_cleaners` (see `tacotron2/text/cleaners.py`)
