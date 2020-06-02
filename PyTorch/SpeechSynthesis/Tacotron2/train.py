@@ -398,8 +398,7 @@ def main():
                               batch_size=args.batch_size, pin_memory=False,
                               drop_last=True, collate_fn=collate_fn)
 
-    valset = data_functions.get_data_loader(
-        model_name, args.dataset_path, args.validation_files, args)
+    #valset = data_functions.get_data_loader( model_name, args.dataset_path, args.validation_files, args)
 
     batch_to_gpu = data_functions.get_batch_to_gpu(model_name)
 
@@ -491,9 +490,9 @@ def main():
         DLLogger.log(step=(epoch,), data={'train_loss': (train_epoch_avg_loss/num_iters if num_iters > 0 else 0.0)})
         DLLogger.log(step=(epoch,), data={'train_epoch_time': epoch_time})
 
-        val_loss = validate(model, criterion, valset, epoch, iteration,
-                            args.batch_size, world_size, collate_fn,
-                            distributed_run, local_rank, batch_to_gpu)
+        #val_loss = validate(model, criterion, valset, epoch, iteration,
+        #                    args.batch_size, world_size, collate_fn,
+        #                    distributed_run, local_rank, batch_to_gpu)
 
         if (epoch % args.epochs_per_checkpoint == 0) and local_rank == 0 and args.bench_class == "":
             checkpoint_path = os.path.join(
@@ -507,7 +506,7 @@ def main():
     run_stop_time = time.perf_counter()
     run_time = run_stop_time - run_start_time
     DLLogger.log(step=tuple(), data={'run_time': run_time})
-    DLLogger.log(step=tuple(), data={'val_loss': val_loss})
+    #DLLogger.log(step=tuple(), data={'val_loss': val_loss})
     DLLogger.log(step=tuple(), data={'train_items_per_sec':
                                      (train_epoch_items_per_sec/num_iters if num_iters > 0 else 0.0)})
 

@@ -30,9 +30,11 @@ check official homepage to get the latest version
     - 134 files
     - 30 mins
 
-2. train/val/test split
+2. cerae `filelists` (train/val/test split)
 roughly following LJ's split (12500/100/500 = 0.95419847, 0.00763359, 0.03816794)  
 134 => (119/5/10)
+instead of splitting we put everything in the training set and examine quality
+by hearing resultant voice sound
 
 3. prepare mel
 prepare fileslist; see `mj_convert.sh`  
@@ -88,9 +90,9 @@ DLL 2020-05-28 06:03:59.527817 - () train_items_per_sec : 156216.86807260188
 ```
 - train loss: -6.157186838531494
 - val loss: -6.200116920471191
-me/yuntai/github/NVIDIA/DeepLearningExamples/PyTorch/SpeechSynthesis/Tacotron2/waveglow_train.png' 
 
-1. train waveglow
+1. train waveglow (waveglow is known to be universal and does not requrires 
+finetuning)
 see `sh train_mj_waveglow.sh`
 
 2. train tacotron
@@ -99,18 +101,23 @@ see `sh train_mj_tacotron.sh`
 ### testing
 `python inference.py --tacotron2 ./output/checkpoint_Tacotron2_6300 --waveglow ./output/checkpoint_WaveGlow_14100 -o output/ --include-warmup -i phrases/phrase_1_64.txt --amp-run --wn-channels 256`
 
-### deploymnet
-
-
+NOTE:
 - seem alignment info is destroyed and then reconstructed...
+- train only postnet/or encoder/decoder - no use
+- ignore text embedding (o)
 
 TODO:
-- train only postnet/or encoder/decoder - no use
-- ignore text embedding? - ?
 - batch size issue
-
-
-
+- gate threshold (--gate-threshold) default: 0.5
+- gate error plotting
+- https://github.com/mozilla/TTS/tree/824c091  
+  Note that having a validation split does not work well as oppose to other ML problems since at the validation time model generates spectrogram slices without "Teacher-Forcing" and that leads misalignment between the ground-truth and the prediction. Therefore, validation loss does not really show the model performance. Rather, you might use all data for training and check the model performance by relying on human inspection.
+- EOS(;) seems (.) is more primed for EOS
+- tensorboard integration for full training
+- emtpy tailing silence detection
+- multiple inference loop - stat
+- sox noise handling  
+  https://digitalcardboard.com/blog/2009/08/25/the-sox-of-silence/comment-page-2/
 
 ## Network dump
 ```

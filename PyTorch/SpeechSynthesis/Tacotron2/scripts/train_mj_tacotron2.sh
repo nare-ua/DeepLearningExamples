@@ -14,13 +14,12 @@ valfiles=/mnt/data/datasets/MJ/filelists/mj_mel_text_val_filelist.txt
 # when the lr is kept @ 3e-05
 #python -m multiproc train.py -m Tacotron2 -o output_mj_tactron2_run_B/ --checkpoint-path $pretrained --amp-run -lr 1e-4 --epochs 8000 -bs 38 --weight-decay 1e-8 --grad-clip-thresh 1.0 --cudnn-enabled --load-mel-from-disk --training-files=/mnt/data/datasets/MJ/filelists/mj_mel_text_train_filelist.txt --validation-files=/mnt/data/datasets/MJ/filelists/mj_mel_text_val_filelist.txt --log-file nvlog_mj_tacotron2.json --anneal-steps 6050 6300 6500 --anneal-factor 0.1 --use-saved-learning-rate true
 
-outputdir=$outputroot/output_mj_tacotron2_run_fr_em
+outputdir=$outputroot/output_mj_tacotron2_run_fr_em_long
 checkpointpath=$pretrained
 mkdir -p $outputdir
 python -m multiproc train.py -m Tacotron2 --checkpoint-path $checkpointpath \
- --learning-rate 3e-5 --epochs 9001 --batch-size 38 --weight-decay 1e-8 --grad-clip-thresh 1.0 \
+ --learning-rate 3e-5 --epochs 12001 --batch-size 38 --weight-decay 1e-6 --grad-clip-thresh 1.0 \
  --load-mel-from-disk --training-files=$trainfiles --validation-files=$valfiles \
- --log-file nvlog.json --anneal-steps 6500 7000 8000 --anneal-factor 0.3 \
- --use-saved-learning-rate true \
+ --log-file nvlog.json --anneal-steps 6100 6200 6500 7000 10000 --anneal-factor 0.3 \
  --output $outputdir \
  --amp-run --cudnn-enabled
