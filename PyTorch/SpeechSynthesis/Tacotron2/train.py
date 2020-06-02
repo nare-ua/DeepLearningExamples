@@ -345,10 +345,10 @@ def main():
                              cpu_run=False,
                              uniform_initialize_bn_weight=not args.disable_uniform_initialize_bn_weight)
 
-    if model_name == 'Tacotron2':
-      # placeholder for model freeze etc
-      #finetune_postnet(model_name, model)
-      freeze_embedding(model)
+    #if model_name == 'Tacotron2':
+    #  # placeholder for model freeze etc
+    #  #finetune_postnet(model_name, model)
+    #  freeze_embedding(model)
 
     if not args.amp_run and distributed_run:
         model = DDP(model)
