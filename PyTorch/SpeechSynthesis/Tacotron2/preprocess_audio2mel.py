@@ -57,6 +57,7 @@ def main():
     parser = parse_args(parser)
     args = parser.parse_args()
     args.load_mel_from_disk = False
+    print("text_cleaners=", args.text_cleaners)
 
     audio2mel(args.dataset_path, args.wav_files, args.mel_files, args)
 

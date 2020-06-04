@@ -24,10 +24,20 @@ while True:
 
   import pandas as pd
   epochs = np.unique(epochs)
-  print(len(epochs), len(vls), len(tls))
-  df = pd.DataFrame({'epoch': epochs, 'tl': tls, 'vl': vls})
+  print("epoch:", len(epochs), len(vls), len(tls))
+  if len(vls) == 0:
+    if len(epochs) > len(tls):
+      tls = tls[:epochs]
+    df = pd.DataFrame({'epoch': epochs, 'tl': tls})
+    y = ['tl']
+  else:
+    if len(epochs) > min(len(tls), len(vls)):
+      tls = tls[:min(len(tls), len(vls))]
+      vls = vls[:min(len(tls), len(vls))]
+    df = pd.DataFrame({'epoch': epochs, 'tl': tls, 'vl': tls})
+    y = ['tl', 'vl']
   fig, ax = plt.subplots(1, 1)
-  df.plot(x = 'epoch', y = ['tl', 'vl'], ax=ax)
+  df.plot(x='epoch', y=y, ax=ax)
   plt.show()
   time.sleep(3*60)
   plt.close()

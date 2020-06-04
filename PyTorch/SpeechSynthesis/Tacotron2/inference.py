@@ -153,7 +153,8 @@ def prepare_input_sequence(texts, cpu_run=False):
     d = []
     for i,text in enumerate(texts):
         d.append(torch.IntTensor(
-            text_to_sequence(text, ['english_cleaners'])[:]))
+            #text_to_sequence(text, ['english_cleaners'])[:]))
+            text_to_sequence(text, ['transliteration_cleaners'])[:]))
 
     text_padded, input_lengths = pad_sequences(d)
     if torch.cuda.is_available() and not cpu_run:

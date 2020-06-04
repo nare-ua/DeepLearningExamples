@@ -119,6 +119,11 @@ TODO:
 - sox noise handling  
   https://digitalcardboard.com/blog/2009/08/25/the-sox-of-silence/comment-page-2/
 
+- voice transferred pretty fast < 6100
+- possible dataset issue?
+- wav file cleaning
+- need to try with a clean dataset
+
 ## Network dump
 ```
 Tacotron2(
