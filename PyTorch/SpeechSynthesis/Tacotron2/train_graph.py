@@ -1,17 +1,19 @@
-#logfn='./output_mj_tacotron_run_B/nvlog_mj_tacotron2.json'
 import sys
 logfn = sys.argv[1]
 import json
 import time
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from datetime import datetime
 
+fig, ax = plt.subplots(1, 1)
 while True:
+  ax.clear()
   epochs, tls, vls = [], [], []
   with open(logfn, 'r') as inf:
     for line in inf:
       ln = json.loads(line.strip('\n').strip()[5:])
-      print(ln)
       if len(ln['step']) == 1:
         epoch = int(ln['step'][0])
         epochs.append(epoch)
@@ -22,22 +24,16 @@ while True:
           vl = ln['data']['val_loss']
           vls.append(vl)
 
-  import pandas as pd
   epochs = np.unique(epochs)
-  print("epoch:", len(epochs), len(vls), len(tls))
-  if len(vls) == 0:
-    if len(epochs) > len(tls):
-      tls = tls[:epochs]
-    df = pd.DataFrame({'epoch': epochs, 'tl': tls})
-    y = ['tl']
-  else:
-    if len(epochs) > min(len(tls), len(vls)):
-      tls = tls[:min(len(tls), len(vls))]
-      vls = vls[:min(len(tls), len(vls))]
-    df = pd.DataFrame({'epoch': epochs, 'tl': tls, 'vl': tls})
-    y = ['tl', 'vl']
-  fig, ax = plt.subplots(1, 1)
-  df.plot(x='epoch', y=y, ax=ax)
+  _min = min(len(epochs), len(vls), len(tls))
+  epochs, vls, tls = epochs[:_min], vls[:_min], tls[:_min]
+  df = pd.DataFrame({'epoch': epochs, 'tl': tls, 'vl': vls})
+  df.plot(x = 'epoch', y = ['tl', 'vl'], ax=ax)
+  ax.set_ylim([0.1, 2.])
+  now = datetime.now()
+  # dd/mm/YY H:M:S
+  dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+  print(dt_string, "epoch=", epochs[-1])
+  plt.ion()
   plt.show()
-  time.sleep(3*60)
-  plt.close()
+  plt.pause(10*60)
