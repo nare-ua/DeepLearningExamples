@@ -9,4 +9,6 @@ RUN pip install --upgrade jupyter_http_over_ws>=0.0.7 && \
 RUN pip install ipywidgets && \
   jupyter nbextension enable --py widgetsnbextension
 RUN pip install google-colab
+RUN pip install flask
 EXPOSE 8888
+EXPOSE 10500
