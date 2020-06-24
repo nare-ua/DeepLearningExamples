@@ -29,11 +29,12 @@ while True:
   epochs, vls, tls = epochs[:_min], vls[:_min], tls[:_min]
   df = pd.DataFrame({'epoch': epochs, 'tl': tls, 'vl': vls})
   df.plot(x = 'epoch', y = ['tl', 'vl'], ax=ax)
-  ax.set_ylim([0.1, 2.])
+  #ax.set_ylim([0.1, 0.3])
+  ax.set_yscale('log')
   now = datetime.now()
   # dd/mm/YY H:M:S
   dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
-  print(dt_string, "epoch=", epochs[-1])
+  print(dt_string, "epoch=", epochs[-1], "tl=", tls[-1], "vl=", vls[-1])
   plt.ion()
   plt.show()
   plt.pause(10*60)

@@ -112,20 +112,18 @@ Add this for korean dataset
 NOTE:
 - seem alignment info is destroyed and then reconstructed...
 - train only postnet/or encoder/decoder - no use
-- ignore text embedding (o)
+- stop grad on text embedding (o)
 
 TODO:
-- batch size issue
 - gate threshold (--gate-threshold) default: 0.5
-- gate error plotting
 - https://github.com/mozilla/TTS/tree/824c091  
   Note that having a validation split does not work well as oppose to other ML problems since at the validation time model generates spectrogram slices without "Teacher-Forcing" and that leads misalignment between the ground-truth and the prediction. Therefore, validation loss does not really show the model performance. Rather, you might use all data for training and check the model performance by relying on human inspection.
-- EOS(;) seems (.) is more primed for EOS
+- EOS(;) seems (.) is more primed for EOS => EOS doesn't really help
 - tensorboard integration for full training
-- emtpy tailing silence detection
-- multiple inference loop - stat
+- emtpy tailing silence detection => dataset quality is not bad
 - sox noise handling  
   https://digitalcardboard.com/blog/2009/08/25/the-sox-of-silence/comment-page-2/
+- try flowtron
 
 - voice transferred pretty fast < 6100
 - possible dataset issue?
