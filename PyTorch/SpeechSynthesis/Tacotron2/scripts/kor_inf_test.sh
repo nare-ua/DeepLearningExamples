@@ -8,10 +8,10 @@ function ctrl_c() {
   exit 1
 }
 
-checkpoint="/mnt/data/checkpoints/output_kss_tacotron_nc3/output_kss_tacotron_nc3/checkpoint_Tacotron2_6000"
-#checkpoint="/mnt/data/checkpoints/kss_ss_1000"
+#checkpoint="/mnt/data/pretrained/kss/checkpoint_Tacotron2_6000"
+checkpoint="/mnt/data/checkpoints/output_iu_tacotron2/checkpoint_Tacotron2_6500"
 
-for s in 6 7; do
+for s in 1 2 3 4 5 6 7; do
   python inference.py --tacotron2 "$checkpoint" --waveglow /mnt/data/pretrained/tacotron2/waveglow_1076430_14000_amp \
 	  -o output/ --include-warmup \
 	  -i phrases/kor/example_$s.txt \

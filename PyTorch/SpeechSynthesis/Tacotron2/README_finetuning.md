@@ -41,6 +41,8 @@ prepare fileslist; see `mj_convert.sh`
 go into docker (`sh scripts/docker/interactive.sh`)  
 `bash scripts/prepare_mels.sh`
 
+Note: Use 'translaterial' cleaner for kroean dataset
+
 processed mel-spectrograms should be found in the `/mnt/data/datasets/MJ/mels`
 
 ### training
@@ -52,7 +54,7 @@ pretrained=/mnt/data/pretrained/tacotron2/tacotron2_1032590_6000_amp
 python -m multiproc train.py -m Tacotron2 -o ./output/ -lr 1e-3 --epochs 6002 -bs 48 --weight-decay 1e-6 --grad-clip-thresh 1.0 --cudnn-enabled --log-file nvlog.json --anneal-steps 500 1000 1500 --anneal-factor 0.1 --amp-run --checkpoint-path $pretrained --use-saved-learning-rate true
 ```
 
-Log output for epoch #6001
+- Tacotron2 checkpoint log file
 ```
 DLL 2020-05-28 03:32:53.154306 - (6001, 129) glob_iter/iters_per_epoch : 129/130
 DLL 2020-05-28 03:32:54.425004 - (6001, 129) train_loss : 0.2885781526565552
@@ -73,6 +75,8 @@ DLL 2020-05-28 03:32:59.714100 - () train_items_per_sec : 16315.76090306534
 - train loss: 0.2735373829419796
 - val loss: 0.4856715649366379
 
+
+- Waveglow checkpoint log file
 ```
 DLL 2020-05-28 06:03:58.363329 - (14001,) train_items_per_sec : 156216.86807260188 
 DLL 2020-05-28 06:03:58.363436 - (14001,) train_loss : -6.157186838531494 
@@ -91,15 +95,19 @@ DLL 2020-05-28 06:03:59.527817 - () train_items_per_sec : 156216.86807260188
 - train loss: -6.157186838531494
 - val loss: -6.200116920471191
 
-1. train waveglow (waveglow is known to be universal and does not requrires 
+1. train tacotron
+see `sh train_mj_tacotron.sh`
+
+2. train waveglow (waveglow is known to be universal and does not requrires 
 finetuning)
 see `sh train_mj_waveglow.sh`
 
-2. train tacotron
-see `sh train_mj_tacotron.sh`
 
 ### testing
 `python inference.py --tacotron2 ./output/checkpoint_Tacotron2_6300 --waveglow ./output/checkpoint_WaveGlow_14100 -o output/ --include-warmup -i phrases/phrase_1_64.txt --amp-run --wn-channels 256`
+
+Add this for korean dataset  
+` --text-cleaners "transliteration_cleaners"`
 
 NOTE:
 - seem alignment info is destroyed and then reconstructed...

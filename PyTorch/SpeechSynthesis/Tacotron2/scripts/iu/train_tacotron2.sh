@@ -1,7 +1,7 @@
 #mkdir -p output
 pretrained=/mnt/data/pretrained/kss/checkpoint_Tacotron2_6000
 outputroot=/mnt/data/checkpoints
-trainfiles=/mnt/data/datasets/IU/tmp/filelists/mel_text_train_filelist.txt
+trainfiles=/mnt/data/datasets/IU/tmp/filelists/mel_text_train_filelist.enc.txt
 
 # run short version
 checkpointpath=$pretrained
@@ -15,5 +15,5 @@ python -m multiproc train.py -m Tacotron2 --checkpoint-path $checkpointpath \
  --amp-run --cudnn-enabled \
  --epochs-per-checkpoint 10 \
  --text-cleaners "transliteration_cleaners" \
- --no-validation  \
- --freeze-embedding
+ --no-validation  
+ #--freeze-embedding
