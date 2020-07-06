@@ -302,7 +302,18 @@ def freeze_embedding(model):
 def finetune_postnet(model):
   for p in model.parameters():
     p.requires_grad = False
+
   for p in model.postnet.parameters():
+    p.requires_grad = True
+  for p in model.decoder.prenet.parameters():
+    p.requires_grad = True
+  for p in model.decoder.attention_rnn.parameters():
+    p.requires_grad = True
+  for p in model.decoder.decoder_rnn.parameters():
+    p.requires_grad = True
+  for p in model.decoder.linear_projection.parameters():
+    p.requires_grad = True
+  for p in model.decoder.gate_layer.parameters():
     p.requires_grad = True
 
 def main():
@@ -349,6 +360,9 @@ def main():
                              cpu_run=False,
                              uniform_initialize_bn_weight=not args.disable_uniform_initialize_bn_weight)
 
+    if model_name == 'Tacotron2':
+      finetune_postnet(model)
+
     if model_name == 'Tacotron2' and args.freeze_embedding:
       freeze_embedding(model)
 
@@ -373,7 +387,11 @@ def main():
     if args.checkpoint_path is not "":
         load_checkpoint(model, optimizer, start_epoch, model_config,
                         args.amp_run, args.checkpoint_path, local_rank)
-
+    
+    saved_lr = optimizer.param_groups[0]['lr']
+    if args.use_saved_learning_rate:
+        print(f"using saved lr({saved_lr})")
+        args.lr = saved_lr
 
     start_epoch = start_epoch[0]
 
