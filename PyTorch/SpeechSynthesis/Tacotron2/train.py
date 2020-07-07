@@ -37,6 +37,7 @@ from torch.autograd import Variable
 from torch.nn.parameter import Parameter
 
 import torch.distributed as dist
+from torch.utils import tensorboard
 from torch.utils.data.distributed import DistributedSampler
 
 from apex.parallel import DistributedDataParallel as DDP
@@ -50,9 +51,14 @@ from dllogger import StdOutBackend, JSONStreamBackend, Verbosity
 
 from scipy.io.wavfile import write as write_wav
 
+from tacotron2.text import text_to_sequence
+from inference import prepare_input_sequence
+
 from apex import amp
 amp.lists.functional_overrides.FP32_FUNCS.remove('softmax')
 amp.lists.functional_overrides.FP16_FUNCS.append('softmax')
+
+from tqdm import tqdm
 
 
 def parse_args(parser):
@@ -72,6 +78,13 @@ def parse_args(parser):
                         help='Epochs after which decrease learning rate')
     parser.add_argument('--anneal-factor', type=float, choices=[0.1, 0.3], default=0.1,
                         help='Factor for annealing learning rate')
+    parser.add_argument('--waveglow-checkpoint', type=str, required=True,
+                        help='wav file generation for tensorboard')
+    parser.add_argument('--phrases', nargs='*',
+                        default=[
+                        './phrases/kor/example_1.txt',
+                        './phrases/kor/example_2.txt',
+                       ])
 
     # training
     training = parser.add_argument_group('training setup')
@@ -106,6 +119,7 @@ def parse_args(parser):
     optimization.add_argument('--grad-clip', default=5.0, type=float,
                               help='Enables gradient clipping and sets maximum gradient norm value')
 
+
     # dataset parameters
     dataset = parser.add_argument_group('dataset parameters')
     dataset.add_argument('--load-mel-from-disk', action='store_true',
@@ -116,8 +130,7 @@ def parse_args(parser):
     dataset.add_argument('--validation-files',
                          default='filelists/ljs_audio_text_val_filelist.txt',
                          type=str, help='Path to validation filelist')
-    dataset.add_argument('--text-cleaners', nargs='*',
-                         default=['english_cleaners'], type=str,
+    dataset.add_argument('--text-cleaners', nargs='*', required=True,
                          help='Type of text cleaners for input text')
     dataset.add_argument('--no-validation', action='store_true',
                          help="Don't run validation")
@@ -193,7 +206,7 @@ def save_checkpoint(model, optimizer, epoch, config, amp_run, filepath):
                   'state_dict': model.state_dict(),
                   'optimizer': optimizer.state_dict()}
     if amp_run:
-        checkpoint['amp'] = amp.state_dict()
+      checkpoint['amp'] = amp.state_dict()
 
     torch.save(checkpoint, filepath)
 
@@ -322,6 +335,13 @@ def main():
     parser = parse_args(parser)
     args, _ = parser.parse_known_args()
 
+    waveglow_model, _, _, _ = restore_checkpoint(args.waveglow_checkpoint, 'WaveGlow')
+
+    texts = []
+    for p in args.phrases:
+      texts.append(open(p, 'r').readlines())
+    args.phrases = texts
+
     if 'LOCAL_RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         local_rank = int(os.environ['LOCAL_RANK'])
         world_size = int(os.environ['WORLD_SIZE'])
@@ -331,7 +351,12 @@ def main():
 
     distributed_run = world_size > 1
 
+    tf_directory = os.path.join(args.output, 'tf_events')
+    if not os.path.exists(tf_directory):
+      os.makedirs(tf_directory)
+
     if local_rank == 0:
+        tensorboard_writer = tensorboard.SummaryWriter(log_dir=tf_directory)
         DLLogger.init(backends=[JSONStreamBackend(Verbosity.DEFAULT,
                                                   args.output+'/'+args.log_file),
                                 StdOutBackend(Verbosity.VERBOSE)])
@@ -384,10 +409,10 @@ def main():
 
     start_epoch = [0]
 
-    if args.checkpoint_path is not "":
+    if args.checkpoint_path != "":
         load_checkpoint(model, optimizer, start_epoch, model_config,
                         args.amp_run, args.checkpoint_path, local_rank)
-    
+
     saved_lr = optimizer.param_groups[0]['lr']
     if args.use_saved_learning_rate:
         print(f"using saved lr({saved_lr})")
@@ -438,6 +463,7 @@ def main():
         # used to calculate avg loss over epoch
         train_epoch_avg_loss = 0.0
         train_epoch_items_per_sec = 0.0
+        train_epoch_avg_items_per_sec = 0.0
 
         num_iters = 0
 
@@ -495,7 +521,7 @@ def main():
             iter_stop_time = time.perf_counter()
             iter_time = iter_stop_time - iter_start_time
             items_per_sec = reduced_num_items/iter_time
-            train_epoch_items_per_sec += items_per_sec
+            train_epoch_avg_items_per_sec += items_per_sec
 
             DLLogger.log(step=(epoch, i), data={'train_items_per_sec': items_per_sec})
             DLLogger.log(step=(epoch, i), data={'train_iter_time': iter_time})
@@ -505,35 +531,174 @@ def main():
         epoch_stop_time = time.perf_counter()
         epoch_time = epoch_stop_time - epoch_start_time
 
-        DLLogger.log(step=(epoch,), data={'train_items_per_sec':
-                                          (train_epoch_items_per_sec/num_iters if num_iters > 0 else 0.0)})
-        DLLogger.log(step=(epoch,), data={'train_loss': (train_epoch_avg_loss/num_iters if num_iters > 0 else 0.0)})
+        train_epoch_items_per_sec = reduced_num_items_epoch / epoch_time
+
+        train_epoch_avg_items_per_sec = train_epoch_avg_items_per_sec / num_iters if num_iters > 0 else 0.0
+        train_epoch_avg_loss = train_epoch_avg_loss / num_iters if num_iters > 0 else 0.0
+
+        #DLLogger.log(step=(epoch,), data={'train_items_per_sec': (train_epoch_items_per_sec/num_iters if num_iters > 0 else 0.0)})
+        #DLLogger.log(step=(epoch,), data={'train_loss': (train_epoch_avg_loss/num_iters if num_iters > 0 else 0.0)})
+        DLLogger.log(step=(epoch,), data={'train_items_per_sec': train_epoch_items_per_sec})
+        DLLogger.log(step=(epoch,), data={'train_loss': train_epoch_avg_loss})
         DLLogger.log(step=(epoch,), data={'train_epoch_time': epoch_time})
 
         if not args.no_validation:
-          val_loss = validate(model, criterion, valset, epoch, iteration,
+          epoch_val_loss = validate(model, criterion, valset, epoch, iteration,
                               args.batch_size, world_size, collate_fn,
                               distributed_run, local_rank, batch_to_gpu)
-            
-        if (epoch % args.epochs_per_checkpoint == 0) and local_rank == 0 and args.bench_class == "":
-            checkpoint_path = os.path.join(
-                args.output, "checkpoint_{}_{}".format(model_name, epoch))
-            save_checkpoint(model, optimizer, epoch, model_config,
-                            args.amp_run, checkpoint_path)
+
+        if epoch != 0 and epoch % args.epochs_per_checkpoint == 0 and local_rank == 0 and args.bench_class == "":
+          checkpoint_path = os.path.join(
+              args.output, "checkpoint_{}_{}".format(model_name, epoch))
+          save_checkpoint(model, optimizer, epoch, model_config,
+                          args.amp_run, checkpoint_path)
+          # Save test audio files to tensorboard
+          generation_pb = tqdm(
+              enumerate(save_sample(model, waveglow_model, args)),
+              total=len(args.phrases)
+          )
+
+          for i, (sample, alignment, mel) in generation_pb:
+              #sample = remove_crackle(sample, Config.wdth, Config.snst)
+
+              tag = 'epoch_{}/infer'.format(epoch)
+              print("epoch({}) adding audio and alignment...".format(epoch))
+
+              # Don't add audio to tb if it's too large
+              # if mel.shape[-1] < Config.max_frames:
+              # YK: should be max_frames but n_frame_per_step is fixed to 1
+              if mel.shape[-1] < args.max_decoder_steps:
+                tensorboard_writer.add_audio(tag=tag, snd_tensor=sample,
+                                             sample_rate=args.sampling_rate)
+
+              #TODO: save mel image
+              fig = plt.figure(figsize=(10, 10))
+              plt.imshow(alignment, aspect='auto')
+              tensorboard_writer.add_figure(tag=tag, figure=fig)
+
         if local_rank == 0:
             DLLogger.flush()
+
+        if local_rank == 0:
+            tensorboard_writer.add_scalar(tag='train_stats/epoch_items_per_sec',
+                                          scalar_value=train_epoch_items_per_sec,
+                                          global_step=epoch)
+            tensorboard_writer.add_scalar(tag='train_stats/epoch_avg_items_per_sec',
+                                          scalar_value=train_epoch_avg_items_per_sec,
+                                          global_step=epoch)
+            tensorboard_writer.add_scalar(tag='train_stats/epoch_time',
+                                          scalar_value=epoch_time,
+                                          global_step=epoch)
+            tensorboard_writer.add_scalar(tag='epoch_avg_loss/train',
+                                          scalar_value=train_epoch_avg_loss,
+                                          global_step=epoch)
+            if not args.no_validation:
+              tensorboard_writer.add_scalar(tag='epoch_avg_loss/val',
+                                            scalar_value=epoch_val_loss,
+                                            global_step=epoch)
 
     torch.cuda.synchronize()
     run_stop_time = time.perf_counter()
     run_time = run_stop_time - run_start_time
     DLLogger.log(step=tuple(), data={'run_time': run_time})
     if not args.no_validation:
-      DLLogger.log(step=tuple(), data={'val_loss': val_loss})
+      DLLogger.log(step=tuple(), data={'val_loss': epoch_val_loss})
     DLLogger.log(step=tuple(), data={'train_items_per_sec':
                                      (train_epoch_items_per_sec/num_iters if num_iters > 0 else 0.0)})
 
     if local_rank == 0:
+        tensorboard_writer.close()
         DLLogger.flush()
+
+def save_sample(t2, wg, args):
+  """
+  :param t2: tacotron2 model
+  :param wg: waveglow model
+  :return:
+  """
+  with evaluating(t2), evaluating(wg), torch.no_grad():
+    for text in args.phrases:
+      #TODO: batch process?
+      #TODO: args.cpu_run
+      sequences_padded, input_lengths = prepare_input_sequence([text], args, False)
+      mels, mel_lengths, alignments = t2.infer(sequences_padded, input_lengths)
+
+      audios = waveglow(mel, sigma=args.sigma_infer)
+      audios = audios.float()
+      audios = denoiser(audios, strength=args.denoising_strength).squeeze(1)
+
+      mel = mels[0]
+      mel_length = mel_lengths[0]
+      alignment = alignments[0]
+      audio = audios[0]
+
+      audio = audio[:mel_length * args.stft_hop_length]
+      audio = audio/torch.max(torch.abs(audio))
+
+      audio_numpy = audio.cpu().numpy()
+      alignments_numpy = alignment.float().data.cpu().numpy()
+
+      yield audio_numpy, alignments_numpy, mel
+
+def restore_checkpoint(restore_path, model_name):
+  """
+
+  :param restore_path:
+  :param model_name:
+  :return:
+  """
+  checkpoint = torch.load(restore_path, map_location='cpu')
+  start_epoch = checkpoint['epoch'] + 1
+
+  print('Restoring from `{}` checkpoint'.format(restore_path))
+
+  model_config = checkpoint['config']
+  model = models.get_model(model_name, model_config, False)
+
+  # Unwrap distributed
+  model_dict = {}
+  for key, value in checkpoint['state_dict'].items():
+      new_key = key.replace('module.1.', '')
+      new_key = new_key.replace('module.', '')
+      model_dict[new_key] = value
+
+  model.load_state_dict(model_dict)
+
+  return model, model_config, checkpoint, start_epoch
+
+# TODO: dup from inference
+def pad_sequences(batch):
+    # Right zero-pad all one-hot text sequences to max input length
+    input_lengths, ids_sorted_decreasing = torch.sort(
+        torch.LongTensor([len(x) for x in batch]),
+        dim=0, descending=True)
+    max_input_len = input_lengths[0]
+
+    text_padded = torch.LongTensor(len(batch), max_input_len)
+    text_padded.zero_()
+    for i in range(len(ids_sorted_decreasing)):
+        text = batch[ids_sorted_decreasing[i]]
+        text_padded[i, :text.size(0)] = text
+
+    return text_padded, input_lengths
+
+# TODO: dup from inference
+def prepare_input_sequence(texts, args, cpu_run=False):
+
+    d = []
+    for i,text in enumerate(texts):
+        d.append(torch.IntTensor(
+            text_to_sequence(text, args.text_cleaners)[:]))
+
+    text_padded, input_lengths = pad_sequences(d)
+    if torch.cuda.is_available() and not cpu_run:
+        text_padded = torch.autograd.Variable(text_padded).cuda().long()
+        input_lengths = torch.autograd.Variable(input_lengths).cuda().long()
+    else:
+        text_padded = torch.autograd.Variable(text_padded).long()
+        input_lengths = torch.autograd.Variable(input_lengths).long()
+
+    return text_padded, input_lengths
 
 if __name__ == '__main__':
     main()

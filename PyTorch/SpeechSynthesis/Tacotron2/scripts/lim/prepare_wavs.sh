@@ -35,7 +35,7 @@ wavfilelists=$(mktemp /mnt/tmp/lim.XXXXXXXXX)
 melfilelists=$(mktemp /mnt/tmp/lim.XXXXXXXXX)
 
 python <<EOF
-with open('${filelists_combined}', 'r') as inf,\
+with open('${filelists_combined}', 'r', encoding='utf-8-sig') as inf,\
   open('${wavfilelists}','w') as outf,\
   open('${melfilelists}','w') as mel_outf:
 
@@ -56,6 +56,7 @@ VALLIST="$dataroot/filelists/audio_text_val_filelist.txt"
 
 TRAINLIST_MEL="$dataroot/filelists/mel_text_train_filelist.txt"
 VALLIST_MEL="$dataroot/filelists/mel_text_val_filelist.txt"
+
 
 mkdir $dataroot/filelists
 
