@@ -15,7 +15,7 @@ echo $outputdir
 # other params are kept
 # issue with detection of cpu type in OpenBLAS fails (OPENBLAS_CORETYPE=nehalem)
 # see https://github.com/xianyi/OpenBLAS/issues/2067 or search similar
-OPENBLAS_CORETYPE=nehalem python -m multiproc train.py -m Tacotron2 \
+python -m multiproc train.py -m Tacotron2 \
  --learning-rate 1e-3 --epochs 6001 --batch-size 280 --weight-decay 1e-6 --grad-clip-thresh 1.0 \
  --load-mel-from-disk --training-files=$trainfiles --validation-files=$valfiles \
  --log-file nvlog.json --anneal-steps 500 1000 1500 2000 --anneal-factor 0.1 \

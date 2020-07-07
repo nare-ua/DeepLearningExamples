@@ -14,8 +14,8 @@ def parse_args(parser):
                         type=str, help='Path to filelist with audio paths and text')
     parser.add_argument('--mel-files', required=True,
                         type=str, help='Path to filelist with mel paths and text')
-    parser.add_argument('--text-cleaners', nargs='*',
-                        default=['english_cleaners'], type=str,
+    parser.add_argument('--text-cleaners', nargs='*', required=True, type=str,)
+                        #default=['english_cleaners'], 
                         help='Type of text cleaners for input text')
     parser.add_argument('--max-wav-value', default=32768.0, type=float,
                         help='Maximum audiowave value')
