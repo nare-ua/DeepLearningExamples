@@ -26,6 +26,7 @@
 # *****************************************************************************
 
 import os
+import sys
 import time
 import argparse
 import numpy as np
@@ -38,6 +39,7 @@ from torch.nn.parameter import Parameter
 
 import torch.distributed as dist
 from torch.utils import tensorboard
+#from tensorboardX import SummaryWriter
 from torch.utils.data.distributed import DistributedSampler
 
 from apex.parallel import DistributedDataParallel as DDP
@@ -52,13 +54,14 @@ from dllogger import StdOutBackend, JSONStreamBackend, Verbosity
 from scipy.io.wavfile import write as write_wav
 
 from tacotron2.text import text_to_sequence
-from inference import prepare_input_sequence
+from inference import prepare_input_sequence, unwrap_distributed, load_and_setup_model, checkpoint_from_distributed
 
 from apex import amp
 amp.lists.functional_overrides.FP32_FUNCS.remove('softmax')
 amp.lists.functional_overrides.FP16_FUNCS.append('softmax')
 
 from tqdm import tqdm
+from waveglow.denoiser import Denoiser
 
 
 def parse_args(parser):
@@ -78,13 +81,6 @@ def parse_args(parser):
                         help='Epochs after which decrease learning rate')
     parser.add_argument('--anneal-factor', type=float, choices=[0.1, 0.3], default=0.1,
                         help='Factor for annealing learning rate')
-    parser.add_argument('--waveglow-checkpoint', type=str, required=True,
-                        help='wav file generation for tensorboard')
-    parser.add_argument('--phrases', nargs='*',
-                        default=[
-                        './phrases/kor/example_1.txt',
-                        './phrases/kor/example_2.txt',
-                       ])
 
     # training
     training = parser.add_argument_group('training setup')
@@ -170,6 +166,11 @@ def parse_args(parser):
 
     benchmark = parser.add_argument_group('benchmark')
     benchmark.add_argument('--bench-class', type=str, default='')
+
+    inference = parser.add_argument_group('inference setup')
+    inference.add_argument('--input', type=str)
+    inference.add_argument('--waveglow', type=str)
+    inference.add_argument('--tb-extra', action='store_true')
 
     return parser
 
@@ -335,12 +336,10 @@ def main():
     parser = parse_args(parser)
     args, _ = parser.parse_known_args()
 
-    waveglow_model, _, _, _ = restore_checkpoint(args.waveglow_checkpoint, 'WaveGlow')
-
-    texts = []
-    for p in args.phrases:
-      texts.append(open(p, 'r').readlines())
-    args.phrases = texts
+    #texts = []
+    #for p in args.phrases:
+    #  texts.append(open(p, 'r').readlines())
+    #args.phrases = texts
 
     if 'LOCAL_RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         local_rank = int(os.environ['LOCAL_RANK'])
@@ -454,6 +453,8 @@ def main():
 
     model.train()
 
+    first_epoch = True
+
     for epoch in range(start_epoch, args.epochs):
         torch.cuda.synchronize()
         epoch_start_time = time.perf_counter()
@@ -547,55 +548,38 @@ def main():
                               args.batch_size, world_size, collate_fn,
                               distributed_run, local_rank, batch_to_gpu)
 
-        if epoch != 0 and epoch % args.epochs_per_checkpoint == 0 and local_rank == 0 and args.bench_class == "":
+        if (first_epoch and local_rank==0) or (epoch != 0 and epoch % args.epochs_per_checkpoint == 0 and local_rank == 0 and
+                           args.bench_class == ""):
+          first_epoch = False
           checkpoint_path = os.path.join(
               args.output, "checkpoint_{}_{}".format(model_name, epoch))
           save_checkpoint(model, optimizer, epoch, model_config,
                           args.amp_run, checkpoint_path)
-          # Save test audio files to tensorboard
-          generation_pb = tqdm(
-              enumerate(save_sample(model, waveglow_model, args)),
-              total=len(args.phrases)
-          )
 
-          for i, (sample, alignment, mel) in generation_pb:
-              #sample = remove_crackle(sample, Config.wdth, Config.snst)
+          #if args.tb_extra:
+          #  run_inference(args, parser, tensorboard_writer, checkpoint_path, args.waveglow)
 
-              tag = 'epoch_{}/infer'.format(epoch)
-              print("epoch({}) adding audio and alignment...".format(epoch))
-
-              # Don't add audio to tb if it's too large
-              # if mel.shape[-1] < Config.max_frames:
-              # YK: should be max_frames but n_frame_per_step is fixed to 1
-              if mel.shape[-1] < args.max_decoder_steps:
-                tensorboard_writer.add_audio(tag=tag, snd_tensor=sample,
-                                             sample_rate=args.sampling_rate)
-
-              #TODO: save mel image
-              fig = plt.figure(figsize=(10, 10))
-              plt.imshow(alignment, aspect='auto')
-              tensorboard_writer.add_figure(tag=tag, figure=fig)
 
         if local_rank == 0:
-            DLLogger.flush()
+          DLLogger.flush()
 
         if local_rank == 0:
-            tensorboard_writer.add_scalar(tag='train_stats/epoch_items_per_sec',
-                                          scalar_value=train_epoch_items_per_sec,
+          tensorboard_writer.add_scalar(tag='train_stats/epoch_items_per_sec',
+                                        scalar_value=train_epoch_items_per_sec,
+                                        global_step=epoch)
+          tensorboard_writer.add_scalar(tag='train_stats/epoch_avg_items_per_sec',
+                                        scalar_value=train_epoch_avg_items_per_sec,
+                                        global_step=epoch)
+          tensorboard_writer.add_scalar(tag='train_stats/epoch_time',
+                                        scalar_value=epoch_time,
+                                        global_step=epoch)
+          tensorboard_writer.add_scalar(tag='epoch_avg_loss/train',
+                                        scalar_value=train_epoch_avg_loss,
+                                        global_step=epoch)
+          if not args.no_validation:
+            tensorboard_writer.add_scalar(tag='epoch_avg_loss/val',
+                                          scalar_value=epoch_val_loss,
                                           global_step=epoch)
-            tensorboard_writer.add_scalar(tag='train_stats/epoch_avg_items_per_sec',
-                                          scalar_value=train_epoch_avg_items_per_sec,
-                                          global_step=epoch)
-            tensorboard_writer.add_scalar(tag='train_stats/epoch_time',
-                                          scalar_value=epoch_time,
-                                          global_step=epoch)
-            tensorboard_writer.add_scalar(tag='epoch_avg_loss/train',
-                                          scalar_value=train_epoch_avg_loss,
-                                          global_step=epoch)
-            if not args.no_validation:
-              tensorboard_writer.add_scalar(tag='epoch_avg_loss/val',
-                                            scalar_value=epoch_val_loss,
-                                            global_step=epoch)
 
     torch.cuda.synchronize()
     run_stop_time = time.perf_counter()
@@ -610,6 +594,14 @@ def main():
         tensorboard_writer.close()
         DLLogger.flush()
 
+def save_sample_infer(parser, args):
+  from inference import load_and_setup_model
+  forward_is_infer = True
+  tacotron2 = load_and_setup_model('Tacotron2', parser, args.tacotron2,
+                                   args.amp_run, False, forward_is_infer=True)
+  waveglow = load_and_setup_model('WaveGlow', parser, args.waveglow,
+                                  args.amp_run, False, forward_is_infer=True)
+
 def save_sample(t2, wg, args):
   """
   :param t2: tacotron2 model
@@ -618,8 +610,6 @@ def save_sample(t2, wg, args):
   """
   with evaluating(t2), evaluating(wg), torch.no_grad():
     for text in args.phrases:
-      #TODO: batch process?
-      #TODO: args.cpu_run
       sequences_padded, input_lengths = prepare_input_sequence([text], args, False)
       mels, mel_lengths, alignments = t2.infer(sequences_padded, input_lengths)
 
@@ -699,6 +689,92 @@ def prepare_input_sequence(texts, args, cpu_run=False):
         input_lengths = torch.autograd.Variable(input_lengths).long()
 
     return text_padded, input_lengths
+
+def run_inference(args, parser, tensorboard_writer, tacotron_path, waveglow_path):
+  model_config = models.get_model_config('Tacotron2', args)
+  model = models.get_model('Tacotron2', model_config, True, forward_is_infer=True)
+  state_dict = torch.load(tacotron_path, map_location=torch.device('cpu'))['state_dict']
+  if checkpoint_from_distributed(state_dict):
+      state_dict = unwrap_distributed(state_dict)
+
+  model.load_state_dict(state_dict)
+  model.eval()
+  if args.amp_run:
+    model.half()
+  tacotron2 = model
+
+  waveglow = load_and_setup_model('WaveGlow', parser, waveglow_path,
+                                  False, True, forward_is_infer=True)
+
+  denoiser = Denoiser(waveglow, True)
+  #jitted_tacotron2 = torch.jit.script(tacotron2)
+
+  texts = []
+  try:
+      f = open(args.input, 'r')
+      texts = f.readlines()
+  except:
+      print("Could not read file")
+      sys.exit(1)
+
+  if True:#args.include_warmup:
+    if True:#args.cpu_run:
+      sequence = torch.randint(low=0, high=148, size=(1,50),
+                           dtype=torch.long)
+      input_lengths = torch.IntTensor([sequence.size(1)]).long()
+      #else:
+      #    sequence = torch.randint(low=0, high=148, size=(1,50),
+      #                         dtype=torch.long).cuda()
+      #    input_lengths = torch.IntTensor([sequence.size(1)]).cuda().long()
+    for i in range(3):
+      with torch.no_grad():
+        mel, mel_lengths, _ = tacotron2(sequence, input_lengths)
+        _ = waveglow(mel)
+
+  sequences_padded, input_lengths = prepare_input_sequence(texts, True, args.text_cleaners)
+  print("sequences_padded.shape=", sequences_padded.size())
+  print("input_lengths.shape=", input_lengths.size())
+  print("input_lengths=", input_lengths)
+
+  with torch.no_grad():
+    mels, mel_lengths, alignments = tacotron2(sequences_padded, input_lengths)
+
+  print("mel=", mels.size())
+  print("mel_lengths=", mel_lengths)
+  print("alignments.shape=", alignments.size())
+
+  with torch.no_grad():
+    audios = waveglow(mels, sigma=args.sigma_infer)
+    audios = audios.float()
+    audios = denoiser(audios, strength=args.denoising_strength).squeeze(1)
+
+  for i, audio in enumerate(audios):
+    audio = audio[:mel_lengths[i] * args.stft_hop_length]
+    audio = audio/torch.max(torch.abs(audio))
+    alignment = alignments[i,:mel_lengths[i], :input_lengths[i]].float().data.cpu().numpy().T
+    mel = mels[i,:, :mel_lengths[i]].float().data.cpu().numpy()
+
+    #plt.imshow(alignment, aspect="auto", origin="lower")
+    #figure_path = args.output+"alignment_"+str(i)+"_"+args.suffix+".png"
+    #plt.savefig(figure_path)
+
+    #audio = audio[:mel_lengths[i] * args.stft_hop_length]
+    #audio = audio/torch.max(torch.abs(audio))
+    #audio_path = args.output+"audio_"+str(i)+"_"+args.suffix+".wav"
+    #write(audio_path, args.sampling_rate, audio.cpu().numpy())
+
+    #TODO: retreive from checkpoint file
+    tag = 'epoch_{}/infer:sample_{}'.format(epoch, i)
+    tensorboard_writer.add_audio(tag=tag, snd_tensor=audio.cpu().numpy(), sample_rate=args.sampling_rate)
+    tag = 'epoch_{}/alignment:sample_{}'.format(epoch, i)
+    fig = plt.figure(figsize=(10, 10))
+    plt.imshow(alignment, aspect='auto', origin="lower")
+    tensorboard_writer.add_figure(tag=tag, figure=fig)
+
+    tag = 'epoch_{}/mel:sample_{}'.format(epoch, i)
+    fig = plt.figure(figsize=(10, 10))
+    plt.imshow(mel, aspect='auto', origin="lower")
+    tensorboard_writer.add_figure(tag=tag, figure=fig)
 
 if __name__ == '__main__':
     main()

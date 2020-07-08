@@ -27,11 +27,14 @@
 
 from tacotron2.text import text_to_sequence
 import models
+from torch.utils import tensorboard
+#from tensorboardX import SummaryWriter
 import torch
 import argparse
 import numpy as np
 from scipy.io.wavfile import write
 import matplotlib.pyplot as plt
+plt.rcParams.update({'font.size': 24})
 
 import sys
 
@@ -68,9 +71,9 @@ def parse_args(parser):
                         help='Include warmup')
     parser.add_argument('--stft-hop-length', type=int, default=256,
                         help='STFT hop length for estimating audio length from mel size')
-    parser.add_argument('--cpu-run', action='store_true', 
+    parser.add_argument('--cpu-run', action='store_true',
                         help='Run inference on CPU')
-    dataset.add_argument('--text-cleaners', nargs='*', required=True,
+    parser.add_argument('--text-cleaners', nargs='*', required=True,
                          help='Type of text cleaners for input text')
 
     return parser
@@ -150,12 +153,12 @@ def pad_sequences(batch):
     return text_padded, input_lengths
 
 
-def prepare_input_sequence(texts, cpu_run=False):
+def prepare_input_sequence(texts, cpu_run=False, text_cleaners=['english_cleaners']):
 
     d = []
     for i,text in enumerate(texts):
         d.append(torch.IntTensor(
-            text_to_sequence(text, args.text_cleaners)[:]))
+            text_to_sequence(text, text_cleaners)[:]))
 
     text_padded, input_lengths = pad_sequences(d)
     if torch.cuda.is_available() and not cpu_run:
@@ -195,6 +198,9 @@ def main():
     parser = parse_args(parser)
     args, _ = parser.parse_known_args()
 
+    if args.tf_directory != "":
+      tensorboard_writer = tensorboard.SummaryWriter(log_dir=args.tf_directory)
+
     DLLogger.init(backends=[JSONStreamBackend(Verbosity.DEFAULT,
                                               args.output+'/'+args.log_file),
                             StdOutBackend(Verbosity.VERBOSE)])
@@ -206,7 +212,7 @@ def main():
                                      args.amp_run, args.cpu_run, forward_is_infer=True)
     waveglow = load_and_setup_model('WaveGlow', parser, args.waveglow,
                                     args.amp_run, args.cpu_run, forward_is_infer=True)
-    
+
     if args.cpu_run:
         denoiser = Denoiser(waveglow, args.cpu_run)
     else:
@@ -238,19 +244,26 @@ def main():
 
     measurements = {}
 
-    sequences_padded, input_lengths = prepare_input_sequence(texts, args.cpu_run)
+    sequences_padded, input_lengths = prepare_input_sequence(texts, args.cpu_run, args.text_cleaners)
+    print("sequences_padded.shape=", sequences_padded.size())
+    print("input_lengths.shape=", input_lengths.size())
+    print("input_lengths=", input_lengths)
 
     with torch.no_grad(), MeasureTime(measurements, "tacotron2_time", args.cpu_run):
-        mel, mel_lengths, alignments = jitted_tacotron2(sequences_padded, input_lengths)
+        mels, mel_lengths, alignments = jitted_tacotron2(sequences_padded, input_lengths)
+
+    print("mel=", mels.size())
+    print("mel_lengths=", mel_lengths)
+    print("alignments.shape=", alignments.size())
 
     with torch.no_grad(), MeasureTime(measurements, "waveglow_time", args.cpu_run):
-        audios = waveglow(mel, sigma=args.sigma_infer)
+        audios = waveglow(mels, sigma=args.sigma_infer)
         audios = audios.float()
         audios = denoiser(audios, strength=args.denoising_strength).squeeze(1)
 
-    print("Stopping after",mel.size(2),"decoder steps")
+    print("Stopping after", mels.size(2), "decoder steps")
 
-    tacotron2_infer_perf = mel.size(0)*mel.size(2)/measurements['tacotron2_time']
+    tacotron2_infer_perf = mels.size(0)*mels.size(2)/measurements['tacotron2_time']
     waveglow_infer_perf = audios.size(0)*audios.size(1)/measurements['waveglow_time']
 
     DLLogger.log(step=0, data={"tacotron2_items_per_sec": tacotron2_infer_perf})
@@ -260,17 +273,38 @@ def main():
     DLLogger.log(step=0, data={"latency": (measurements['tacotron2_time']+measurements['waveglow_time'])})
 
     for i, audio in enumerate(audios):
-
-        plt.imshow(alignments[i].float().data.cpu().numpy().T, aspect="auto", origin="lower")
-        figure_path = args.output+"alignment_"+str(i)+"_"+args.suffix+".png"
-        plt.savefig(figure_path)
-
         audio = audio[:mel_lengths[i]*args.stft_hop_length]
         audio = audio/torch.max(torch.abs(audio))
-        audio_path = args.output+"audio_"+str(i)+"_"+args.suffix+".wav"
-        write(audio_path, args.sampling_rate, audio.cpu().numpy())
+        alignment = alignments[i,:mel_lengths[i], :input_lengths[i]].float().data.cpu().numpy().T
+        mel = mels[i,:, :mel_lengths[i]].float().data.cpu().numpy()
+
+        #plt.imshow(alignment, aspect="auto", origin="lower")
+        #figure_path = args.output+"alignment_"+str(i)+"_"+args.suffix+".png"
+        #plt.savefig(figure_path)
+
+        #audio = audio[:mel_lengths[i] * args.stft_hop_length]
+        #audio = audio/torch.max(torch.abs(audio))
+        #audio_path = args.output+"audio_"+str(i)+"_"+args.suffix+".wav"
+        #write(audio_path, args.sampling_rate, audio.cpu().numpy())
+
+        #TODO: retreive from checkpoint file
+        epoch=6200
+        if args.tf_directory != "":
+          tag = 'epoch_{}/infer:sample_{}'.format(epoch, i)
+          tensorboard_writer.add_audio(tag=tag, snd_tensor=audio.cpu().numpy(), sample_rate=args.sampling_rate)
+
+          tag = 'epoch_{}/alignment:sample_{}'.format(epoch, i)
+          fig = plt.figure(figsize=(10, 10))
+          plt.imshow(alignment, aspect='auto', origin="lower")
+          tensorboard_writer.add_figure(tag=tag, figure=fig)
+
+          tag = 'epoch_{}/mel:sample_{}'.format(epoch, i)
+          fig = plt.figure(figsize=(10, 10))
+          plt.imshow(mel, aspect='auto', origin="lower")
+          tensorboard_writer.add_figure(tag=tag, figure=fig)
 
     DLLogger.flush()
+    tensorboard_writer.close()
 
 if __name__ == '__main__':
     main()
