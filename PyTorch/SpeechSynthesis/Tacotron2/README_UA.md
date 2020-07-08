@@ -18,3 +18,11 @@ batch sized used on ML server = 48
 ```
 python inference.py --tacotron2 <Tacotron2_checkpoint> --waveglow <WaveGlow_checkpoint> --wn-channels 256 -o output/ -i phrases/phrase.txt --amp-run
 ```
+
+### run tensorboard
+```
+docker exec -it ${containderId} tensorboard --logdir ${logdir}
+```
+```
+docker exec -it eb2ef8333652 tensorboard --logdir /mnt/tmp/train/tacotron2/checkpoints/lim_tacotron2_tensorboard/tf_events
+```
