@@ -57,8 +57,9 @@ def parse_waveglow_args(parent, add_help=False):
     wavenet = parser.add_argument_group('WaveNet parameters')
     wavenet.add_argument('--wn-kernel-size', default=3, type=int,
                         help='Kernel size for dialted convolution in the affine coupling layer (WN)')
-    wavenet.add_argument('--wn-channels', default=512, type=int,
-                        help='Number of channels in WN')
+    #TODO
+    #wavenet.add_argument('--wn-channels', default=512, type=int, help='Number of channels in WN')
+    wavenet.add_argument('--wn-channels', default=256, type=int, help='Number of channels in WN')
     wavenet.add_argument('--wn-layers', default=8, type=int,
                         help='Number of layers in WN')
 
